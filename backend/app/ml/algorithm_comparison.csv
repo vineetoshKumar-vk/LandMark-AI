@@ -1,0 +1,5 @@
+Algorithm,Clusters,Cluster_Distribution,Silhouette_Score,Davies_Bouldin_Index
+K-Means,2,"[75, 2]",0.41972097754478455,0.46168531468955604
+K-Medians,2,"[75, 2]",0.08868285268545151,0.8726504766176406
+Agglomerative (ward),2,"[75, 2]",0.41972097754478455,0.46168531468955604
+Agglomerative (average),2,"[75, 2]",0.41972097754478455,0.46168531468955604
