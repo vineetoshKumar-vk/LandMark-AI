@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: landmark_backend
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  frontend:
+    build: ./frontend
+    container_name: landmark_frontend
+    ports:
+      - "5176:5176"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://127.0.0.1:8001

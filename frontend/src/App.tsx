@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
@@ -7,6 +6,7 @@ import {
   Bell, Upload, ArrowUpRight, Activity, FolderOpen, Trash2,
   LoaderCircle, Play, CheckCircle2, AlertCircle, ImagePlus,
   Sparkles, RefreshCw,
+  MapPin // <-- NAYA ICON ADD KIYA HAI
 } from 'lucide-react'
 
 import {
@@ -74,6 +74,11 @@ interface ErrorResponse {
   detail?: string
 }
 
+// NAYE TYPES: Recognition ke liye
+interface RecognizedImage { filename: string; url: string; confidence: number; }
+interface LandmarkGroup { landmark_name: string; image_count: number; images: RecognizedImage[]; }
+interface RecognitionResponse { message: string; total_groups: number; groups: LandmarkGroup[]; }
+
 // --------------------------------------------------
 // CONSTANTS
 // --------------------------------------------------
@@ -96,6 +101,7 @@ const menuItems = [
   { name: 'Dataset Manager', icon: Images },
   { name: 'Feature Extraction', icon: Database },
   { name: 'Clustering Studio', icon: Layers },
+  { name: 'Landmark Recognition', icon: MapPin }, // <-- NAYA MENU ITEM
   { name: 'Evaluation', icon: ChartBar },
 ]
 
@@ -127,13 +133,16 @@ function App() {
 
   const [experimentCount, setExperimentCount] = useState(0)
 
+  // NAYE STATES: Recognition ke liye
+  const [recognizing, setRecognizing] = useState(false)
+  const [recognitionResults, setRecognitionResults] = useState<LandmarkGroup[] | null>(null)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // --------------------------------------------------
   // LOAD IMAGES
   // --------------------------------------------------
 
-  // Backend se uploaded images ki list laata hai.
   const loadImages = useCallback(async () => {
     try {
       setImagesLoading(true)
@@ -159,7 +168,6 @@ function App() {
   // CHECK BACKEND
   // --------------------------------------------------
 
-  // FastAPI health endpoint se server status check karta hai.
   const checkBackend = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/health`)
@@ -175,7 +183,6 @@ function App() {
     }
   }, [])
 
-  // Page open hone par backend aur images load honge.
   useEffect(() => {
     checkBackend()
     loadImages()
@@ -185,7 +192,6 @@ function App() {
   // UPLOAD IMAGES
   // --------------------------------------------------
 
-  // Selected image files ko FastAPI backend par upload karta hai.
   const handleImageUpload = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
@@ -216,8 +222,9 @@ function App() {
 
       setUploadMessage('Images uploaded successfully!')
 
-      // New upload ke baad old clustering result clear karte hain.
+      // New upload ke baad old results clear karte hain.
       setClusteringResults(null)
+      setRecognitionResults(null) // Reset Recognition
       await loadImages()
     } catch (error) {
       setUploadMessage(
@@ -236,7 +243,6 @@ function App() {
   // DELETE IMAGE
   // --------------------------------------------------
 
-  // Selected image ko backend se permanently delete karta hai.
   const handleDeleteImage = async (filename: string) => {
     const confirmDelete = window.confirm(
       'Are you sure you want to delete this image?',
@@ -259,6 +265,7 @@ function App() {
       }
 
       setClusteringResults(null)
+      setRecognitionResults(null)
       await loadImages()
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Delete failed')
@@ -271,7 +278,6 @@ function App() {
   // RUN CLUSTERING
   // --------------------------------------------------
 
-  // Selected algorithm aur K value backend ko bhejta hai.
   const handleRunClustering = async () => {
     if (totalImages < 2) {
       setClusteringMessage('Please upload at least 2 images first.')
@@ -311,7 +317,6 @@ function App() {
       }
 
       if ('results' in data) {
-        // API response ke andar actual ML results "results" key mein hain.
         setClusteringResults(data.results)
         setExperimentCount((previous) => previous + 1)
         setClusteringMessage(data.message)
@@ -322,6 +327,25 @@ function App() {
       )
     } finally {
       setClustering(false)
+    }
+  }
+
+  // --------------------------------------------------
+  // NAYA FUNCTION: RUN RECOGNITION
+  // --------------------------------------------------
+
+  const handleRunRecognition = async () => {
+    if (totalImages === 0) return alert('Please upload images first.')
+    try {
+      setRecognizing(true)
+      const response = await fetch(`${API_URL}/recognize`)
+      const data: RecognitionResponse = await response.json()
+      if (!response.ok) throw new Error('Recognition failed')
+      setRecognitionResults(data.groups)
+    } catch (error) {
+      alert('Error during recognition: ' + error)
+    } finally {
+      setRecognizing(false)
     }
   }
 
@@ -343,7 +367,6 @@ function App() {
   // GRAPH DATA
   // --------------------------------------------------
 
-  // Cluster counts ko Bar Chart aur Pie Chart ke format mein convert karta hai.
   const clusterChartData = clusteringResults
     ? Object.entries(clusteringResults.cluster_distribution).map(
         ([clusterId, count]) => ({
@@ -358,8 +381,6 @@ function App() {
       )
     : []
 
-  // PCA points ko unke cluster ke according separate karta hai.
-  // Har Scatter series ek cluster ko represent karti hai.
   const pcaSeries = clusteringResults
     ? Array.from(
         { length: clusteringResults.total_clusters },
@@ -373,7 +394,6 @@ function App() {
       ).filter((series) => series.points.length > 0)
     : []
 
-  // PCA explained variance ko percentage mein convert karta hai.
   const varianceData = (clusteringResults?.explained_variance || []).map(
     (value, index) => ({
       component: `PC ${index + 1}`,
@@ -452,6 +472,7 @@ function App() {
                     'dataset',
                     'feature-extraction',
                     'clustering',
+                    'recognition', // <-- NAYA ID
                     'evaluation',
                   ]
 
@@ -1212,6 +1233,56 @@ function App() {
                 </div>
               </div>
             )}
+          </section>
+
+          {/* NAYA SECTION: LANDMARK RECOGNITION */}
+          <section id="recognition" className="scroll-mt-28">
+            <div className="mb-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8A9A8E]">Semantic Grouping</p>
+              <h2 className="mt-1 text-xl font-bold">Landmark Recognition</h2>
+              <p className="mt-1 text-sm text-[#89968D]">Identify actual landmark names (Taj Mahal, Qutub Minar) using CLIP AI model.</p>
+            </div>
+
+            <div className="rounded-2xl border border-[#E8ECE7] bg-white p-5 shadow-sm md:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-lg">Recognize Uploaded Photos</h3>
+                  <p className="text-sm text-[#89968D] mt-1">Run the AI to group photos by their actual names.</p>
+                </div>
+                <button onClick={handleRunRecognition} disabled={recognizing || totalImages === 0} className="flex items-center gap-2 rounded-xl bg-[#8EAA98] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#7B9685] disabled:opacity-50">
+                  {recognizing ? <LoaderCircle size={18} className="animate-spin" /> : <MapPin size={18} />}
+                  {recognizing ? 'Analyzing Photos...' : 'Recognize Landmarks'}
+                </button>
+              </div>
+
+              {recognitionResults && (
+                <div className="mt-8 space-y-6">
+                  {recognitionResults.map((group) => (
+                    <div key={group.landmark_name} className="rounded-2xl border border-[#E8ECE7] bg-[#FAFBF9] p-4">
+                      <div className="mb-3 flex items-center justify-between border-b border-[#E8ECE7] pb-3">
+                        <div className="flex items-center gap-2">
+                           <MapPin size={18} className="text-[#547566]" />
+                           <h4 className="font-bold text-lg text-[#25352F]">{group.landmark_name}</h4>
+                        </div>
+                        <span className="rounded-full bg-[#E8EEE9] px-3 py-1 text-xs font-bold text-[#547566]">{group.image_count} Photos</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                        {group.images.map((img) => (
+                          <div key={img.filename} className="overflow-hidden rounded-xl border border-[#E8ECE7] bg-white shadow-sm relative group">
+                            <img src={img.url} alt={img.filename} className="aspect-[4/3] w-full object-cover" />
+                            <div className="p-2">
+                               <p className="truncate text-[11px] text-[#718077]">{img.filename}</p>
+                               <p className={`text-[10px] font-bold mt-1 ${img.confidence > 80 ? 'text-green-600' : 'text-yellow-600'}`}>Match: {img.confidence}%</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
           {/* MODEL EVALUATION */}
