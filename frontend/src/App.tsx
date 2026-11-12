@@ -83,7 +83,16 @@ interface RecognitionResponse { message: string; total_groups: number; groups: L
 // CONSTANTS
 // --------------------------------------------------
 
-const API_URL = 'http://127.0.0.1:8001'
+// const API_URL = 'http://127.0.0.1:8001'
+
+
+// Backend API URL
+// Local development ke liye localhost use hoga.
+// Deployed website par Render backend use hoga.
+
+const API_URL =
+  import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001'
+
 
 const CHART_COLORS = [
   '#547566',
