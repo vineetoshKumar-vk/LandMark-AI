@@ -1,4 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+# from fastapi import FastAPI, UploadFile, File, HTTPException
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -65,13 +67,36 @@ async def upload_images(files: list[UploadFile] = File(...)):
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+# @app.get("/images")
+# def get_uploaded_images():
+#     images = []
+#     for image_path in UPLOAD_DIR.iterdir():
+#         if image_path.is_file() and image_path.suffix.lower() in ALLOWED_EXTENSIONS:
+#             images.append({"filename": image_path.name, "url": f"http://127.0.0.1:8001/uploads/{image_path.name}"})
+#     return {"total_images": len(images), "images": images}
+
+
 @app.get("/images")
-def get_uploaded_images():
+def get_uploaded_images(request: Request):
     images = []
+
     for image_path in UPLOAD_DIR.iterdir():
         if image_path.is_file() and image_path.suffix.lower() in ALLOWED_EXTENSIONS:
-            images.append({"filename": image_path.name, "url": f"http://127.0.0.1:8001/uploads/{image_path.name}"})
-    return {"total_images": len(images), "images": images}
+
+            # Generate the correct backend image URL dynamically
+            image_url = str(
+                request.base_url
+            ).rstrip("/") + f"/uploads/{image_path.name}"
+
+            images.append({
+                "filename": image_path.name,
+                "url": image_url
+            })
+
+    return {
+        "total_images": len(images),
+        "images": images
+    }
 
 @app.delete("/images/{filename}")
 def delete_image(filename: str):
@@ -101,31 +126,83 @@ def dataset_info():
     landmarks = get_candidate_landmarks()
     return {"total_landmarks": len(landmarks), "landmarks": landmarks}
 
+# @app.get("/recognize")
+# def recognize_images():
+#     try:
+#         grouped_landmarks = {}
+#         for image_path in UPLOAD_DIR.iterdir():
+#             if image_path.is_file() and image_path.suffix.lower() in ALLOWED_EXTENSIONS:
+#                 result = recognize_landmark(image_path)
+#                 landmark_name = result["landmark"]
+#                 confidence = result["confidence"]
+                
+#                 if landmark_name not in grouped_landmarks:
+#                     grouped_landmarks[landmark_name] = []
+                
+#                 grouped_landmarks[landmark_name].append({
+#                     "filename": image_path.name,
+#                     "url": f"http://127.0.0.1:8001/uploads/{image_path.name}",
+#                     "confidence": round(confidence * 100, 2)
+#                 })
+        
+#         final_groups = []
+#         for name, images in grouped_landmarks.items():
+#             final_groups.append({"landmark_name": name, "image_count": len(images), "images": images})
+            
+#         final_groups.sort(key=lambda x: x["landmark_name"] == "Unknown / Review")
+            
+#         return {"message": "Recognition completed!", "total_groups": len(final_groups), "groups": final_groups}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/recognize")
-def recognize_images():
+def recognize_images(request: Request):
     try:
         grouped_landmarks = {}
+
         for image_path in UPLOAD_DIR.iterdir():
             if image_path.is_file() and image_path.suffix.lower() in ALLOWED_EXTENSIONS:
+
+                # Recognize the landmark in the image
                 result = recognize_landmark(image_path)
+
                 landmark_name = result["landmark"]
                 confidence = result["confidence"]
-                
+
                 if landmark_name not in grouped_landmarks:
                     grouped_landmarks[landmark_name] = []
-                
+
+                # Generate the correct deployed image URL
+                image_url = (
+                    str(request.base_url).rstrip("/")
+                    + f"/uploads/{image_path.name}"
+                )
+
                 grouped_landmarks[landmark_name].append({
                     "filename": image_path.name,
-                    "url": f"http://127.0.0.1:8001/uploads/{image_path.name}",
+                    "url": image_url,
                     "confidence": round(confidence * 100, 2)
                 })
-        
+
         final_groups = []
+
         for name, images in grouped_landmarks.items():
-            final_groups.append({"landmark_name": name, "image_count": len(images), "images": images})
-            
-        final_groups.sort(key=lambda x: x["landmark_name"] == "Unknown / Review")
-            
-        return {"message": "Recognition completed!", "total_groups": len(final_groups), "groups": final_groups}
+            final_groups.append({
+                "landmark_name": name,
+                "image_count": len(images),
+                "images": images
+            })
+
+        final_groups.sort(
+            key=lambda x: x["landmark_name"] == "Unknown / Review"
+        )
+
+        return {
+            "message": "Recognition completed!",
+            "total_groups": len(final_groups),
+            "groups": final_groups
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
