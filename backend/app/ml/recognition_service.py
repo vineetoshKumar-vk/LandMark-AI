@@ -27,10 +27,17 @@ def get_hf_client():
     if hf_client is None:
         print("Connecting to Hugging Face Space...")
 
-        hf_client = Client(
-            SPACE_ID,
-            hf_token=HF_TOKEN
-        )
+        # hf_client = Client(
+        #     SPACE_ID,
+        #     hf_token=HF_TOKEN
+        # )
+
+
+hf_client = Client(
+    SPACE_ID,
+    token=HF_TOKEN
+)
+
 
         print("Connected to Hugging Face Space!")
 
