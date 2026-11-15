@@ -1,114 +1,77 @@
 
 # backend/app/ml/recognition_service.py
 
-import torch
-from PIL import Image
-from transformers import CLIPProcessor, CLIPModel
-from backend.app.ml.dataset_service import get_candidate_landmarks
+import os
+from gradio_client import Client, handle_file
 
-# ---------------------------------------
-# 1. MODEL VARIABLES
-# ---------------------------------------
+# Hugging Face private Space
+SPACE_ID = "Vineetoshk/landmark-clip-inference"
 
-# Initially models load nahi honge.
-# First recognition request par load honge.
+# Read token from Render environment variables
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-model = None
-processor = None
-
-MODEL_ID = "openai/clip-vit-base-patch32"
-
-# CPU threads limit karenge to reduce unnecessary overhead.
-torch.set_num_threads(1)
+# Client will be created only when needed
+hf_client = None
 
 
-# ---------------------------------------
-# 2. LAZY LOADING FUNCTION
-# ---------------------------------------
+def get_hf_client():
+    """
+    Connect to the private Hugging Face Space.
+    Reuse the connection for future requests.
+    """
+    global hf_client
 
-def load_clip_model():
-    global model, processor
+    if not HF_TOKEN:
+        raise ValueError("HF_TOKEN is missing in Render environment")
 
-    # Agar model already loaded hai toh dobara load mat karo.
-    if model is None or processor is None:
+    if hf_client is None:
+        print("Connecting to Hugging Face Space...")
 
-        print("Loading CLIP AI Model...")
-
-        processor = CLIPProcessor.from_pretrained(MODEL_ID)
-
-        model = CLIPModel.from_pretrained(MODEL_ID)
-
-        # CPU par model run karenge.
-        model = model.to("cpu")
-
-        # Evaluation mode: inference ke liye.
-        model.eval()
-
-        print("CLIP Model Loaded Successfully!")
-
-    return model, processor
-
-
-# ---------------------------------------
-# 3. LANDMARK RECOGNITION FUNCTION
-# ---------------------------------------
-
-def recognize_landmark(image_path):
-
-    try:
-        # First request par hi CLIP model load hoga.
-        clip_model, clip_processor = load_clip_model()
-
-        # Image open and RGB conversion.
-        with Image.open(image_path) as img:
-            image = img.convert("RGB")
-
-        # Candidate landmarks fetch karo.
-        landmarks = get_candidate_landmarks()
-
-        if not landmarks:
-            return {
-                "landmark": "Unknown / Review",
-                "confidence": 0.0
-            }
-
-        # Image aur text ko model input mein convert karo.
-        inputs = clip_processor(
-            text=landmarks,
-            images=image,
-            return_tensors="pt",
-            padding=True
+        hf_client = Client(
+            SPACE_ID,
+            hf_token=HF_TOKEN
         )
 
-        # Gradient calculation ki zaroorat nahi hai.
-        with torch.inference_mode():
-            outputs = clip_model(**inputs)
+        print("Connected to Hugging Face Space!")
 
-            # Similarity scores ko probabilities mein convert karo.
-            probs = outputs.logits_per_image.softmax(dim=1)
+    return hf_client
 
-            best_idx = probs.argmax().item()
-            best_prob = probs[0][best_idx].item()
-            best_landmark = landmarks[best_idx]
 
-        # Confidence check.
-        if (
-            best_landmark == "a random unrelated object or unknown place"
-            or best_prob < 0.65
-        ):
-            return {
-                "landmark": "Unknown / Review",
-                "confidence": best_prob
-            }
+def recognize_landmark(image_path):
+    """
+    Send an image to Hugging Face CLIP model
+    and return the landmark prediction.
+    """
 
+    try:
+        # Get authenticated Hugging Face client
+        client = get_hf_client()
+
+        print(f"Sending image to Hugging Face: {image_path}")
+
+        # Send image to the actual Gradio API endpoint
+        result = client.predict(
+            image=handle_file(image_path),
+            api_name="/recognize_landmark"
+        )
+
+        print(f"Hugging Face response: {result}")
+
+        # Validate the response
+        if not isinstance(result, dict):
+            raise ValueError(f"Unexpected response: {result}")
+
+        landmark = result.get("landmark", "Unknown / Review")
+        confidence = float(result.get("confidence", 0.0))
+
+        # Return the same format used by the existing backend
         return {
-            "landmark": best_landmark,
-            "confidence": best_prob
+            "landmark": landmark,
+            "confidence": confidence
         }
 
-    except Exception as e:
-
-        print(f"Error recognizing {image_path}: {e}")
+    except Exception as error:
+        print(f"Error recognizing {image_path}: {error}")
 
         return {
             "landmark": "Unknown / Review",
